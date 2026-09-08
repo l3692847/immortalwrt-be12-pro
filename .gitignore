@@ -1,0 +1,4 @@
+openwrt/
+build.log
+*.bin
+*.img.gz
