@@ -52,6 +52,7 @@ jobs:
           cat >> feeds.conf.default << 'EOF'
           src-git kenzo https://github.com/kenzok8/openwrt-packages
           src-git small https://github.com/kenzok8/small
+          src-git istore https://github.com/linkease/istore;main
           EOF
 
       - name: Update & install feeds
@@ -59,6 +60,8 @@ jobs:
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+          # iStore 官方集成方式：-d y 自动将包及其依赖设为 y
+          ./scripts/feeds install -d y -p istore luci-app-store
 
       - name: Clone OpenClash
         working-directory: openwrt
@@ -66,15 +69,6 @@ jobs:
           git clone --depth=1 -b ${{ github.event.inputs.openclash_branch || 'master' }} \
             https://github.com/vernesong/OpenClash.git /tmp/openclash
           cp -r /tmp/openclash/luci-app-openclash package/
-
-      - name: Clone iStore
-        working-directory: openwrt
-        run: |
-          git clone --depth=1 https://github.com/linkease/istore.git /tmp/istore
-          # 自动查找 luci-app-* 目录，兼容仓库结构变化
-          find /tmp/istore -maxdepth 1 -type d -name "luci-app-*" -exec cp -r {} package/ \;
-          # 如果找不到就列出目录结构方便排查
-          ls /tmp/istore/ || true
 
       - name: Merge config
         working-directory: openwrt
@@ -98,6 +92,8 @@ jobs:
       - name: Generate config
         working-directory: openwrt
         run: |
+          # 双保险：显式启用 iStore（defconfig 会自动补全依赖）
+          echo 'CONFIG_PACKAGE_luci-app-store=y' >> .config
           make defconfig
 
       - name: Show config summary
