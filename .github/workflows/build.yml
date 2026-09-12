@@ -1,5 +1,4 @@
 name: Build ImmortalWrt for Tenda BE12 Pro
-
 on:
   workflow_dispatch:
     inputs:
@@ -11,26 +10,22 @@ on:
         description: 'SSH debug (true/false)'
         required: false
         default: 'false'
-
 env:
   REPO_URL: https://github.com/chasey-dev/immortalwrt-mt798x-rebase.git
   REPO_BRANCH: 25.12-dev-wifi7
   CONFIG_FILE: config/defconfig-delta
   DIY_SH: diy.sh
-
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Free up disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
           sudo apt-get clean
           df -h
-
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -40,36 +35,28 @@ jobs:
             qemu-utils ccache
           git config --global user.name "Builder"
           git config --global user.email "builder@example.com"
-
       - name: Clone source
         run: |
           git clone -b ${{ env.REPO_BRANCH }} --single-branch --depth=1 \
             ${{ env.REPO_URL }} openwrt
-
       - name: Add third-party feeds
         working-directory: openwrt
         run: |
           cat >> feeds.conf.default << 'EOF'
           src-git kenzo https://github.com/kenzok8/openwrt-packages
           src-git small https://github.com/kenzok8/small
-          src-git istore https://github.com/linkease/istore;main
           EOF
-
       - name: Update & install feeds
         working-directory: openwrt
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-          # iStore 官方集成方式：-d y 自动将包及其依赖设为 y
-          ./scripts/feeds install -d y -p istore luci-app-store
-
       - name: Clone OpenClash
         working-directory: openwrt
         run: |
           git clone --depth=1 -b ${{ github.event.inputs.openclash_branch || 'master' }} \
             https://github.com/vernesong/OpenClash.git /tmp/openclash
           cp -r /tmp/openclash/luci-app-openclash package/
-
       - name: Merge config
         working-directory: openwrt
         run: |
@@ -82,44 +69,35 @@ jobs:
               "$base" > .config.base
           cat .config.base ${{ github.workspace }}/${{ env.CONFIG_FILE }} > .config
           rm -f .config.base
-
       - name: Set default LAN IP
         working-directory: openwrt
         run: |
           sed -i 's/192\.168\.1\.1/192.168.3.1/g' \
             package/base-files/files/bin/config_generate
-
       - name: Generate config
         working-directory: openwrt
         run: |
-          # 双保险：显式启用 iStore（defconfig 会自动补全依赖）
-          echo 'CONFIG_PACKAGE_luci-app-store=y' >> .config
           make defconfig
-
       - name: Show config summary
         working-directory: openwrt
         run: |
           grep -E '(openclash|istore|store)' .config || true
-
       - name: Download packages
         working-directory: openwrt
         run: |
           make download -j$(nproc)
-
       - name: Compile firmware
         working-directory: openwrt
         run: |
           echo "=== Start compiling ==="
           make -j$(nproc) || make -j1 V=s
           echo "=== Compilation done ==="
-
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
           name: immortalwrt-be12-pro-${{ github.run_number }}
           path: openwrt/bin/targets/mediatek/filogic/*
           retention-days: 30
-
       - name: SSH debug
         if: github.event.inputs.ssh == 'true'
         uses: mxschmitt/action-tmate@v3
